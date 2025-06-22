@@ -10,7 +10,6 @@ import {
   Platform,
   SafeAreaView,
 } from 'react-native';
-import { Audio } from 'expo-av';
 import { appendActivity, getCSVFileUri, clearAllActivities } from '../utils/activityLogger';
 import * as Sharing from 'expo-sharing';
 import * as FileSystem from 'expo-file-system';
@@ -21,46 +20,31 @@ const getCurrentTime = () => {
   const hours = now.getHours() % 12 || 12;
   const minutes = String(now.getMinutes()).padStart(2, '0');
   const ampm = now.getHours() >= 12 ? 'PM' : 'AM';
-  return `${String(hours).padStart(2, '0')}:${minutes}${ampm}`;};
+  return `${String(hours).padStart(2, '0')}:${minutes}${ampm}`;
+};
 
 const currentTime = getCurrentTime();
 
 const terminalText = [
   "C:\\welcome\\user",
-  `${currentTime}  ->  i'm kairos`,
-  `${currentTime}  ->  the greek god of the opportune moment, time. the keeper of the now.`,
-  `${currentTime}  ->  i grant you the power to master your time.`,
-  `${currentTime}  ->  log your activity, seize each moment, and carve your path to success.`,
-  `${currentTime}  ->  by clicking on add activity.`,
-  `${currentTime}  ->  type 'kairos.csv' to download all time logs above`,
-  `${currentTime}  ->  type 'kairos.clear' to erase all time logs above`,
+  `${currentTime}  →  i'm kairos`,
+  `${currentTime}  →  the greek god of the opportune moment, time. the keeper of the now.`,
+  `${currentTime}  →  i grant you the power to master your time.`,
+  `${currentTime}  →  log your activity, seize each moment, and carve your path to success.`,
+  `${currentTime}  →  by clicking on add activity.`,
+  `${currentTime}  →  type 'kairos.csv' to download all time logs above`,
+  `${currentTime}  →  type 'kairos.clear' to erase all time logs above`,
 ];
 
 const GuideScreen = ({ navigation }) => {
   const [displayedLines, setDisplayedLines] = useState([]);
   const [typingIndex, setTypingIndex] = useState(0);
-  const [sound, setSound] = useState(null);
   const [input, setInput] = useState('');
   const [showInput, setShowInput] = useState(false);
 
   useEffect(() => {
-    const loadSound = async () => {
-      const { sound } = await Audio.Sound.createAsync(
-        require('../assets/sound.mp3')
-      );
-      setSound(sound);
-    };
-    loadSound();
-
-    return () => {
-      if (sound) sound.unloadAsync();
-    };
-  }, []);
-
-  useEffect(() => {
     if (typingIndex < terminalText.length) {
-      const timeout = setTimeout(async () => {
-        if (sound) await sound.replayAsync();
+      const timeout = setTimeout(() => {
         setDisplayedLines(prev => [...prev, terminalText[typingIndex]]);
         setTypingIndex(prev => prev + 1);
       }, 1000);
@@ -188,8 +172,8 @@ const styles = StyleSheet.create({
   inputContainer: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingBottom: Platform.OS === 'android' ? 60 : 10,
-    paddingHorizontal: 15,
+    paddingBottom: Platform.OS === 'android' ? 48 : 10,
+    paddingHorizontal: 10,
     backgroundColor: 'black',
   },
   inlineInput: {
