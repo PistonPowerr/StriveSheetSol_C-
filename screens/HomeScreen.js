@@ -10,21 +10,25 @@ import {
   Keyboard,
   Platform,
 } from 'react-native';
-import { appendActivity, getCSVFileUri, clearAllActivities } from '../utils/activityLogger';
+import { appendActivity, getCSVFileUri, clearAllActivities, exportToCSV, getAllActivities } from '../utils/activityLogger';
 import { useRoute } from '@react-navigation/native';
-import * as Sharing from 'expo-sharing';
-import * as FileSystem from 'expo-file-system';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import moment from 'moment';
+import { Snackbar } from 'react-native-paper';
 
 const HomeScreen = () => {
   const route = useRoute();
-  const initialActivities = route.params?.activities || [];
-  const [activities, setActivities] = useState(initialActivities);
+  const [activities, setActivities] = useState([]);
   const [input, setInput] = useState('');
   const flatListRef = useRef(null);
   const insets = useSafeAreaInsets();
-  const [dateTagAdded, setDateTagAdded] = useState(false);
+  const [snackbarVisible, setSnackbarVisible] = useState(false);
+  const [snackbarMessage, setSnackbarMessage] = useState('');
+
+  const showSnackbar = (message) => {
+    setSnackbarMessage(message);
+    setSnackbarVisible(true);
+  };
 
   const getCurrentTime = () => {
     const now = new Date();
@@ -33,8 +37,6 @@ const HomeScreen = () => {
     const ampm = now.getHours() >= 12 ? 'PM' : 'AM';
     return `${String(hours).padStart(2, '0')}:${minutes}${ampm}`;
   };
-
-  const [time, setTime] = useState(getCurrentTime());
 
   useEffect(() => {
     const interval = setInterval(() => setTime(getCurrentTime()), 60000);
@@ -49,33 +51,35 @@ const HomeScreen = () => {
   }, []);
 
   useEffect(() => {
-    const activity = route.params?.initialActivity;
-    if (activity) {
-      const newActivity = {
-        ...activity,
-        key: Date.now().toString(),
-      };
-      setActivities(prev => [...prev, newActivity]);
-      setTimeout(() => flatListRef.current?.scrollToEnd({ animated: true }), 100);
-    }
-  }, [route.params?.initialActivity]);
+    const loadPreviousLogs = async () => {
+      const storedLogs = await getAllActivities();
+      const groupedLogs = [];
+      let lastDate = '';
 
-  // Add date tag once per session
-  useEffect(() => {
-    if (!dateTagAdded) {
-      const today = moment().format('YYYY-MM-DD');
-      const displayDate = moment().isSame(new Date(), 'day') ? 'today' : today;
+      storedLogs.forEach((line, i) => {
+        const match = line.match(/\[(.+?)\]$/);
+        const date = match ? moment(match[1]).format('YYYY-MM-DD') : null;
+        const today = moment().format('YYYY-MM-DD');
 
-      const dateActivity = {
-        text: `C:\\date\\${displayDate}`,
-        time: getCurrentTime(),
-        key: `date-${Date.now()}`,
-      };
+        if (date && date !== lastDate) {
+          groupedLogs.push({
+            text: `C:\\date\\${date === today ? 'today' : date}`,
+            key: `date-${i}`,
+          });
+          lastDate = date;
+        }
 
-      setActivities(prev => [dateActivity, ...prev]);
-      setDateTagAdded(true);
-    }
-  }, [dateTagAdded]);
+        groupedLogs.push({
+          text: line.replace(/ \[.+\]$/, ''),
+          key: `${i}-${line.slice(0, 10)}`,
+        });
+      });
+
+      setActivities(groupedLogs);
+    };
+
+    loadPreviousLogs();
+  }, []);
 
   const handleAdd = async () => {
     const trimmed = input.trim();
@@ -84,13 +88,8 @@ const HomeScreen = () => {
     const currentTime = getCurrentTime();
 
     if (trimmed === 'kairos.csv') {
-      const fileUri = getCSVFileUri();
-      const fileInfo = await FileSystem.getInfoAsync(fileUri);
-      if (fileInfo.exists) {
-        await Sharing.shareAsync(fileUri);
-      } else {
-        alert('No activities logged yet!');
-      }
+      await exportToCSV();
+      showSnackbar('CSV file exported');
       setInput('');
       return;
     }
@@ -98,37 +97,50 @@ const HomeScreen = () => {
     if (trimmed === 'kairos.clear') {
       await clearAllActivities();
       setActivities([]);
-      alert('All activity logs erased.');
+      showSnackbar('Logs cleared');
       setInput('');
       return;
     }
 
+    const logLine = `${currentTime} → ${trimmed} [${new Date().toISOString()}]`;
+    const todayDate = moment().format('YYYY-MM-DD');
+    const newLogs = [...activities];
+
+    const lastDateEntry = newLogs.findLast(log => log.text.startsWith('C:\\date\\'));
+    const lastDateTag = lastDateEntry?.text.split('C:\\date\\')[1];
+
+    if (lastDateTag !== 'today') {
+      newLogs.push({
+        text: 'C:\\date\\today',
+        key: `date-${Date.now()}`,
+      });
+    }
+
     const newEntry = {
-      text: trimmed,
-      time: currentTime,
+      text: `${currentTime} → ${trimmed}`,
       key: Date.now().toString(),
     };
 
-    setActivities(prev => [...prev, newEntry]);
+    newLogs.push(newEntry);
+    setActivities(newLogs);
     await appendActivity(trimmed, currentTime);
     setInput('');
     Keyboard.dismiss();
-
     setTimeout(() => flatListRef.current?.scrollToEnd({ animated: true }), 100);
   };
 
   const renderItem = ({ item, index }) => {
-  const isDateLine = item.text.startsWith('C:\\date\\');
-  return (
-    <Text style={[
-      styles.white,
-      index % 2 === 0 ? styles.green : styles.cyan,
-      styles.entryText
-    ]}>
-      {isDateLine ? item.text : `${item.time}  →  ${item.text}`}
-    </Text>
-  );
-};
+    const isDateLine = item.text.startsWith('C:\\date\\');
+    return (
+      <Text style={[
+        styles.white,
+        isDateLine ? styles.white : index % 2 === 0 ? styles.green : styles.cyan,
+        styles.entryText,
+      ]}>
+        {item.text}
+      </Text>
+    );
+  };
 
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: 'black' }}>
@@ -165,6 +177,14 @@ const HomeScreen = () => {
           </View>
         </View>
       </KeyboardAvoidingView>
+      <Snackbar
+        visible={snackbarVisible}
+        onDismiss={() => setSnackbarVisible(false)}
+        duration={2000}
+        style={{ backgroundColor: '#333' }}
+      >
+        {snackbarMessage}
+      </Snackbar>
     </SafeAreaView>
   );
 };
@@ -173,7 +193,7 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: 'black',
-    paddingTop: 0,
+    paddingTop: 15,
     paddingHorizontal: 15,
   },
   line: {
